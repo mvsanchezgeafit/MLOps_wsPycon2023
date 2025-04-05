@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch import nn 
 from torch.utils.data import TensorDataset
 
-# Import the model class from the main file
+# Import the model class from the main file 
 from src.Classifier import Classifier
 
 import os
