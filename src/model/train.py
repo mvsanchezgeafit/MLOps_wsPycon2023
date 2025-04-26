@@ -1,7 +1,3 @@
-import torch
-import torch.nn.functional as F
-from torch import nn 
-from torch.utils.data import TensorDataset
 
 # Import the model class from the main file 
 from src.Classifier import Classifier
@@ -9,6 +5,10 @@ from src.Classifier import Classifier
 import os
 import argparse
 import wandb
+import numpy as np 
+
+import tensorflow as tf
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--IdExecution', type=str, help='ID of the execution')
@@ -19,76 +19,95 @@ if args.IdExecution:
 else:
     args.IdExecution = "testing console"
 
-# Device configuration
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print("Device: ", device)
+# Device configuration 
+if tf.config.list_physical_devices('GPU'):
+    device = "GPU"
+else:
+    device = "CPU"
 
+print("Device:", device)
 
 def read(data_dir, split):
     """
-    Read data from a directory and return a TensorDataset object.
 
-    Args:
-    - data_dir (str): The directory where the data is stored.
-    - split (str): The name of the split to read (e.g. "train", "valid", "test").
-
-    Returns:
-    - dataset (TensorDataset): A TensorDataset object containing the data.
     """
-    filename = split + ".pt"
-    x, y = torch.load(os.path.join(data_dir, filename))
+    filename = split + ".npz"
+    filepath = os.path.join(data_dir, filename)
 
-    return TensorDataset(x, y)
+    with np.load(filepath) as data:
+        x = data["x"]
+        y = data["y"]
+
+    return x, y
+
 
 
 
 def train(model, train_loader, valid_loader, config):
-    optimizer = getattr(torch.optim, config.optimizer)(model.parameters())
-    model.train()
+
+    optimizer_class = getattr(tf.keras.optimizers, config.optimizer)
+    optimizer = optimizer_class()
+
+    # Función de pérdida
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+
+    # Métricas para monitorear
+    train_loss = tf.keras.metrics.Mean()
+    val_loss = tf.keras.metrics.Mean()
+    val_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+
+  
+    #model.train()
     example_ct = 0
     for epoch in range(config.epochs):
-        for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)
-            data = data.view(data.shape[0],-1)
-            optimizer.zero_grad()
-            output = model(data)
-            loss = F.cross_entropy(output, target)
-            loss.backward()
-            optimizer.step()
+        print(f"\nEpoch {epoch+1}/{config.epochs}")
+                # 🔁 Entrenamiento
+        for step, (x_batch, y_batch) in enumerate(train_loader):
+            with tf.GradientTape() as tape:
+                logits = model(x_batch, training=True)
+                loss_value = loss_fn(y_batch, logits)
 
-            example_ct += len(data)
+            grads = tape.gradient(loss_value, model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
-            if batch_idx % config.batch_log_interval == 0:
-                print('Train Epoch: {} [{}/{} ({:.0%})]\tLoss: {:.6f}'.format(
-                    epoch, batch_idx * len(data), len(train_loader.dataset),
-                    batch_idx / len(train_loader), loss.item()))
-                
-                train_log(loss, example_ct, epoch)
+            train_loss.update_state(loss_value)
+            example_ct += x_batch.shape[0]
 
-        # evaluate the model on the validation set at each epoch
-        loss, accuracy = test(model, valid_loader)  
-        test_log(loss, accuracy, example_ct, epoch)
+            if step % config.batch_log_interval == 0:
+                loss_value_scalar = loss_value.numpy()  # Convertir a tipo escalar para WandB
+                print(f"Step {step}, Loss: {loss_value_scalar:.4f}")
+                train_log(loss_value_scalar, example_ct, epoch)
+       
 
+        # 🧪 Validación al final de la época
+        for x_batch_val, y_batch_val in valid_loader:
+            val_logits = model(x_batch_val, training=False)
+            v_loss = loss_fn(y_batch_val, val_logits)
+
+            val_loss.update_state(v_loss)
+            val_accuracy.update_state(y_batch_val, val_logits)
+
+        print(f"Validation Loss: {val_loss.result():.4f}, Accuracy: {val_accuracy.result():.4f}")
+        test_log(val_loss.result().numpy(), val_accuracy.result().numpy(), example_ct, epoch)
+
+        # Reset metrics
+        train_loss.reset_states()
+        val_loss.reset_states()
+        val_accuracy.reset_states()
     
 def test(model, test_loader):
-    model.eval()
-    test_loss = 0
-    correct = 0
-    with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            data = data.view(data.shape[0],-1)
-            output = model(data)
-            test_loss += F.cross_entropy(output, target, reduction='sum')  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum()
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+    test_loss = tf.keras.metrics.Mean()
+    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
 
-    test_loss /= len(test_loader.dataset)
+    for x_batch, y_batch in test_loader:
+        logits = model(x_batch, training=False)
+        loss_value = loss_fn(y_batch, logits)
 
-    accuracy = 100. * correct / len(test_loader.dataset)
-    
-    return test_loss, accuracy
+        test_loss.update_state(loss_value)
+        test_accuracy.update_state(y_batch, logits)
 
+    return test_loss.result().numpy(), test_accuracy.result().numpy() * 100
 
 def train_log(loss, example_ct, epoch):
     loss = float(loss)
@@ -115,114 +134,148 @@ def evaluate(model, test_loader):
     return loss, accuracy, highest_losses, hardest_examples, true_labels, predictions
 
 def get_hardest_k_examples(model, testing_set, k=32):
+    # Convertimos el conjunto de prueba en un tf.data.Dataset si no lo está
+    # Esto asume que `testing_set` es una tupla de arrays (x_test, y_test).
+    x_test, y_test = testing_set
+    dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(1)
+
+    # Función de pérdida
+    loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+
+    losses = []
+    predictions = []
+
+    # Deshabilitamos el entrenamiento
     model.eval()
 
-    loader = DataLoader(testing_set, 1, shuffle=False)
+    # Calculamos las pérdidas y predicciones para cada ejemplo
+    for x_batch, y_batch in dataset:
+        logits = model(x_batch, training=False)  # Predicción
+        loss_value = loss_fn(y_batch, logits)   # Pérdida
 
-    # get the losses and predictions for each item in the dataset
-    losses = None
-    predictions = None
-    with torch.no_grad():
-        for data, target in loader:
-            data, target = data.to(device), target.to(device)
-            data = data.view(data.shape[0],-1)
-            output = model(data)
-            loss = F.cross_entropy(output, target)
-            pred = output.argmax(dim=1, keepdim=True)
-            
-            if losses is None:
-                losses = loss.view((1, 1))
-                predictions = pred
-            else:
-                losses = torch.cat((losses, loss.view((1, 1))), 0)
-                predictions = torch.cat((predictions, pred), 0)
+        # Calculamos la predicción más probable
+        pred = tf.argmax(logits, axis=1, output_type=tf.int32)
 
-    argsort_loss = torch.argsort(losses, dim=0).cpu()
+        losses.append(loss_value.numpy())  # Guardamos la pérdida
+        predictions.append(pred.numpy())  # Guardamos las predicciones
 
+    # Convertimos las pérdidas y predicciones a numpy arrays
+    losses = np.array(losses)
+    predictions = np.array(predictions)
+
+    # Obtenemos los indices de las pérdidas más altas
+    argsort_loss = np.argsort(losses)
+
+    # Seleccionamos los k ejemplos más difíciles
     highest_k_losses = losses[argsort_loss[-k:]]
-    hardest_k_examples = testing_set[argsort_loss[-k:]][0]
-    true_labels = testing_set[argsort_loss[-k:]][1]
+    hardest_k_examples = x_test[argsort_loss[-k:]]
+    true_labels = y_test[argsort_loss[-k:]]
     predicted_labels = predictions[argsort_loss[-k:]]
 
     return highest_k_losses, hardest_k_examples, true_labels, predicted_labels
 
-from torch.utils.data import DataLoader
+
+
+
 
 def train_and_log(config,experiment_id='99'):
+
     with wandb.init(
-        project="MLOps-Pycon2023", 
+        project="Proyecto", 
         name=f"Train Model ExecId-{args.IdExecution} ExperimentId-{experiment_id}", 
         job_type="train-model", config=config) as run:
         config = wandb.config
+        
+        # Usamos el artefacto de datos procesados
         data = run.use_artifact('mnist-preprocess:latest')
         data_dir = data.download()
 
-        training_dataset =  read(data_dir, "training")
+        # Cargamos los datasets usando TensorFlow Dataset API
+        training_dataset = read(data_dir, "training")
         validation_dataset = read(data_dir, "validation")
 
-        train_loader = DataLoader(training_dataset, batch_size=config.batch_size)
-        validation_loader = DataLoader(validation_dataset, batch_size=config.batch_size)
-        
+        # Convertimos los datasets a tf.data.Dataset
+        train_dataset = tf.data.Dataset.from_tensor_slices(training_dataset).batch(config.batch_size)
+        val_dataset = tf.data.Dataset.from_tensor_slices(validation_dataset).batch(config.batch_size)
+
+        # Cargamos el modelo
         model_artifact = run.use_artifact("linear:latest")
         model_dir = model_artifact.download()
-        model_path = os.path.join(model_dir, "initialized_model_linear.pth")
-        model_config = model_artifact.metadata
-        config.update(model_config)
+        model_path = os.path.join(model_dir, "initialized_model_linear.h5")
+        
+        model = tf.keras.models.load_model(model_path)
+        
+        # Compilamos el modelo
+        model.compile(optimizer=config.optimizer,
+                      loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+                      metrics=[tf.keras.metrics.SparseCategoricalAccuracy()])
 
-        model = Classifier(**model_config)
-        model.load_state_dict(torch.load(model_path))
-        model = model.to(device)
- 
-        train(model, train_loader, validation_loader, config)
+        # Entrenamos el modelo
+        model.fit(train_dataset, validation_data=val_dataset, epochs=config.epochs)
 
+        # Guardamos el modelo entrenado
         model_artifact = wandb.Artifact(
             "trained-model", type="model",
             description="Trained NN model",
-            metadata=dict(model_config))
+            metadata=dict(config))
 
-        torch.save(model.state_dict(), "trained_model.pth")
-        model_artifact.add_file("trained_model.pth")
-        wandb.save("trained_model.pth")
+        # Guardamos el modelo en formato .h5
+        model.save("trained_model.h5")
+        model_artifact.add_file("trained_model.h5")
+        wandb.save("trained_model.h5")
 
         run.log_artifact(model_artifact)
+
 
     return model
 
     
-def evaluate_and_log(experiment_id='99',config=None,):
-    
-    with wandb.init(project="MLOps-Pycon2023", name=f"Eval Model ExecId-{args.IdExecution} ExperimentId-{experiment_id}", job_type="eval-model", config=config) as run:
+def evaluate_and_log(experiment_id='99', config=None):
+    with wandb.init(project="MLOps-Pycon2023", 
+                    name=f"Eval Model ExecId-{args.IdExecution} ExperimentId-{experiment_id}", 
+                    job_type="eval-model", 
+                    config=config) as run:
+        
+        # Descargar y cargar los datos procesados
         data = run.use_artifact('mnist-preprocess:latest')
         data_dir = data.download()
-        testing_set = read(data_dir, "test")
+        testing_set = read(data_dir, "test")  # Función para leer los datos
 
-        test_loader = torch.utils.data.DataLoader(testing_set, batch_size=128, shuffle=False)
+        # Convertimos el conjunto de datos de prueba a tf.data.Dataset
+        test_dataset = tf.data.Dataset.from_tensor_slices(testing_set).batch(128)
 
+        # Cargar el modelo entrenado
         model_artifact = run.use_artifact("trained-model:latest")
         model_dir = model_artifact.download()
-        model_path = os.path.join(model_dir, "trained_model.pth")
-        model_config = model_artifact.metadata
+        model_path = os.path.join(model_dir, "trained_model.h5")  # Usamos .h5 en TensorFlow
 
-        model = Classifier(**model_config)
-        model.load_state_dict(torch.load(model_path))
-        model.to(device)
+        model = tf.keras.models.load_model(model_path)
 
-        loss, accuracy, highest_losses, hardest_examples, true_labels, preds = evaluate(model, test_loader)
+        # Evaluar el modelo en el conjunto de prueba
+        loss, accuracy = model.evaluate(test_dataset)
 
+        # Registrar las métricas (pérdida y exactitud)
         run.summary.update({"loss": loss, "accuracy": accuracy})
 
+        # Obtener los ejemplos de alto error
+        highest_losses, hardest_examples, true_labels, preds = get_hardest_k_examples(model, testing_set, k=32)
+
+        # Log de ejemplos con las pérdidas más altas
         wandb.log({"high-loss-examples":
-            [wandb.Image(hard_example, caption=str(int(pred)) + "," +  str(int(label)))
+            [wandb.Image(hard_example, caption=f"{int(pred)}," + str(int(label))) 
              for hard_example, pred, label in zip(hardest_examples, preds, true_labels)]})
 
-epochs = [50,100,200]
-for id,epoch in enumerate(epochs):
-    train_config = {"batch_size": 128,
-                "epochs": epoch,
-                "batch_log_interval": 25,
-                "optimizer": "Adam"}
-    model = train_and_log(train_config,id)
-    evaluate_and_log(id)        
+# Para ejecutar las evaluaciones con diferentes configuraciones de épocas
+epochs = [50, 100, 200]
+for id, epoch in enumerate(epochs):
+    train_config = {
+        "batch_size": 128,
+        "epochs": epoch,
+        "batch_log_interval": 25,
+        "optimizer": "Adam"
+    }
+    model = train_and_log(train_config, id)  # Entrenamos el modelo
+    evaluate_and_log(id)  # Evaluamos el modelo
 
 """    
 train_config = {"batch_size": 128,
@@ -233,3 +286,4 @@ train_config = {"batch_size": 128,
 model = train_and_log(train_config)
 evaluate_and_log()
 """
+
