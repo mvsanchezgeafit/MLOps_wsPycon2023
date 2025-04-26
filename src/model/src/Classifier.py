@@ -1,12 +1,15 @@
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense
+from tensorflow.keras.saving import register_keras_serializable
 
+# Registrar la clase como serializable
+@register_keras_serializable(package='Custom', name='Classifier')
 class Classifier(Model):
     def __init__(self, input_shape, hidden_layer_1, hidden_layer_2, num_classes, **kwargs):
         super(Classifier, self).__init__(**kwargs)
 
         # Guardar parámetros del modelo
-        self.input_shape_config = input_shape  # renombramos para evitar conflicto con built-in
+        self.input_shape_config = input_shape  # Renombramos para evitar conflicto con built-in
         self.hidden_layer_1 = hidden_layer_1
         self.hidden_layer_2 = hidden_layer_2
         self.num_classes = num_classes
