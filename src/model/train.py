@@ -178,96 +178,79 @@ def get_hardest_k_examples(model, testing_set, k=32):
 
 
 
-def train_and_log(config,experiment_id='99'):
-
+def train_and_log(config, experiment_id='99'):
     with wandb.init(
         project="Proyecto", 
         name=f"Train Model ExecId-{args.IdExecution} ExperimentId-{experiment_id}", 
         job_type="train-model", config=config) as run:
+
         config = wandb.config
-        
-        # Usamos el artefacto de datos procesados
         data = run.use_artifact('mnist-preprocess:latest')
         data_dir = data.download()
 
-        # Cargamos los datasets usando TensorFlow Dataset API
         x_train, y_train = read(data_dir, "training")
         x_valid, y_valid = read(data_dir, "validation")
-
         x_train = x_train.reshape((-1, 784))
         x_valid = x_valid.reshape((-1, 784))
-        
+
         train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).batch(config.batch_size)
         val_dataset = tf.data.Dataset.from_tensor_slices((x_valid, y_valid)).batch(config.batch_size)
 
+        # ⚠️ Crea el modelo directamente en lugar de cargarlo desde archivo
+        model = Classifier(input_shape=784, hidden_layer_1=128, hidden_layer_2=64, num_classes=10)
+        model.build((None, 784))  # necesario para poder guardarlo después
 
-        # Cargamos el modelo
-        model_artifact = run.use_artifact("linear:latest")
-        model_dir = model_artifact.download()
-        model_path = os.path.join(model_dir, "initialized_model_linear.h5")
-        
-        model = tf.keras.models.load_model(model_path, custom_objects={"Classifier": Classifier})
-        
-        # Compilamos el modelo
-        model.compile(optimizer=config.optimizer,
-                      loss=tf.keras.losses.SparseCategoricalCrossentropy(),
-                      metrics=[tf.keras.metrics.SparseCategoricalAccuracy()])
+        model.compile(
+            optimizer=config.optimizer,
+            loss=tf.keras.losses.SparseCategoricalCrossentropy(),
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy()]
+        )
 
-        # Entrenamos el modelo
         model.fit(train_dataset, validation_data=val_dataset, epochs=config.epochs)
 
-        # Guardamos el modelo entrenado
+        # Guardamos el modelo en el nuevo formato .keras
+        model.save("trained_model.keras")
+
         model_artifact = wandb.Artifact(
             "trained-model", type="model",
             description="Trained NN model",
-            metadata=dict(config))
-
-        # Guardamos el modelo en formato .h5
-        model.save("trained_model.h5")
-        model_artifact.add_file("trained_model.h5")
-        wandb.save("trained_model.h5")
-
+            metadata=dict(config)
+        )
+        model_artifact.add_file("trained_model.keras")
         run.log_artifact(model_artifact)
 
-
-    return model
-
-    
+    return model    
 def evaluate_and_log(experiment_id='99', config=None):
-    with wandb.init(project="Proyecto", 
-                    name=f"Eval Model ExecId-{args.IdExecution} ExperimentId-{experiment_id}", 
-                    job_type="eval-model", 
-                    config=config) as run:
-        
-        # Descargar y cargar los datos procesados
+    with wandb.init(
+        project="Proyecto",
+        name=f"Eval Model ExecId-{args.IdExecution} ExperimentId-{experiment_id}",
+        job_type="eval-model",
+        config=config) as run:
+
         data = run.use_artifact('mnist-preprocess:latest')
         data_dir = data.download()
         x_test, y_test = read(data_dir, "test")
         x_test = x_test.reshape((-1, 784))
-        test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(128)
+        testing_set = (x_test, y_test)
+        test_dataset = tf.data.Dataset.from_tensor_slices(testing_set).batch(128)
 
-
-        
-        # Cargar el modelo entrenado
         model_artifact = run.use_artifact("trained-model:latest")
         model_dir = model_artifact.download()
-        model_path = os.path.join(model_dir, "trained_model.h5")  
+        model_path = os.path.join(model_dir, "trained_model.keras")
 
-        model = tf.keras.models.load_model(model_path, custom_objects={"Classifier": Classifier})
+        model = tf.keras.models.load_model(model_path)
 
-        # Evaluar el modelo en el conjunto de prueba
         loss, accuracy = model.evaluate(test_dataset)
-
-        # Registrar las métricas (pérdida y exactitud)
         run.summary.update({"loss": loss, "accuracy": accuracy})
 
-        # Obtener los ejemplos de alto error
         highest_losses, hardest_examples, true_labels, preds = get_hardest_k_examples(model, testing_set, k=32)
 
-        # Log de ejemplos con las pérdidas más altas
-        wandb.log({"high-loss-examples":
-            [wandb.Image(hard_example, caption=f"{int(pred)}," + str(int(label))) 
-             for hard_example, pred, label in zip(hardest_examples, preds, true_labels)]})
+        wandb.log({
+            "high-loss-examples": [
+                wandb.Image(hard_example, caption=f"{int(pred)}," + str(int(label))) 
+                for hard_example, pred, label in zip(hardest_examples, preds, true_labels)
+            ]
+        })
 
 # Para ejecutar las evaluaciones con diferentes configuraciones de épocas
 epochs = [50, 100, 200]
