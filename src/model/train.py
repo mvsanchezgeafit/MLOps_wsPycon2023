@@ -243,7 +243,7 @@ def evaluate_and_log(experiment_id='99', config=None):
 
         wandb.log({
             "high-loss-examples": [
-                wandb.Image(hard_example, caption=f"{int(pred)}," + str(int(label))) 
+                wandb.Image(hard_example.reshape(28, 28), caption=f"{int(pred)}," + str(int(label))) 
                 for hard_example, pred, label in zip(hardest_examples, preds, true_labels)
             ]
         })
