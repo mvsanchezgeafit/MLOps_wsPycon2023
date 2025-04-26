@@ -54,7 +54,7 @@ def build_model_and_log(config, model, model_name="MLP", model_description="Simp
             metadata=dict(config)
         )
 
-        filename = f"initialized_model_{model_name}.h5"
+        filename = f"initialized_model_{model_name}.keras"
         model_path = os.path.join("model", filename)
         model.save(model_path)
         
