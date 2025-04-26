@@ -41,8 +41,8 @@ def preprocess_and_log(steps):
         raw_dataset = raw_data_artifact.download(root="./data/artifacts/")
         
         for split in ["training", "validation", "test"]:
-            raw_split = read(raw_dataset, split)
-            x, y = preprocess(raw_split, **steps)
+            x, y = read(raw_dataset, split)
+            x, y = preprocess(x, y, **steps)
 
             # Guardamos en formato .npz (compresión NumPy)
             filename = split + ".npz"
