@@ -194,9 +194,12 @@ def train_and_log(config,experiment_id='99'):
         training_dataset = read(data_dir, "training")
         validation_dataset = read(data_dir, "validation")
 
-        # Convertimos los datasets a tf.data.Dataset
-        train_dataset = tf.data.Dataset.from_tensor_slices(training_dataset).batch(config.batch_size)
-        val_dataset = tf.data.Dataset.from_tensor_slices(validation_dataset).batch(config.batch_size)
+        x_train = x_train.reshape((-1, 784))
+        x_valid = x_valid.reshape((-1, 784))
+        
+        train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train)).batch(config.batch_size)
+        val_dataset = tf.data.Dataset.from_tensor_slices((x_valid, y_valid)).batch(config.batch_size)
+
 
         # Cargamos el modelo
         model_artifact = run.use_artifact("linear:latest")
@@ -241,9 +244,13 @@ def evaluate_and_log(experiment_id='99', config=None):
         data_dir = data.download()
         testing_set = read(data_dir, "test")  # Función para leer los datos
 
+
+        x_test = x_test.reshape((-1, 784))
         # Convertimos el conjunto de datos de prueba a tf.data.Dataset
         test_dataset = tf.data.Dataset.from_tensor_slices(testing_set).batch(128)
 
+
+        
         # Cargar el modelo entrenado
         model_artifact = run.use_artifact("trained-model:latest")
         model_dir = model_artifact.download()
