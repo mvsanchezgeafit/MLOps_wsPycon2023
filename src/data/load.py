@@ -1,13 +1,12 @@
-import torch
-import torchvision
-from torch.utils.data import TensorDataset
-# Testing
+import os
+#Se cambian las librerias de pythorch por librerias como numpy, sklearn, tensorflow
+import numpy as np
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.datasets import mnist
 import argparse
 import wandb
 
-
-#Hola
-
+#prueba commit
 parser = argparse.ArgumentParser()
 parser.add_argument('--IdExecution', type=str, help='ID of the execution')
 args = parser.parse_args()
@@ -20,43 +19,40 @@ def load(train_size=.8):
     # Load the data
     """
       
-    # the data, split between train and test sets
-    train = torchvision.datasets.MNIST(root='./data', train=True, download=True)
-    test = torchvision.datasets.MNIST(root='./data', train=False, download=True)
+    # Se carga dataset con keras
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
-    (x_train, y_train), (x_test, y_test) = (train.data, train.targets), (test.data, test.targets)
 
-    # split off a validation set for hyperparameter tuning
-    x_train, x_val = x_train[:int(len(train)*train_size)], x_train[int(len(train)*train_size):]
-    y_train, y_val = y_train[:int(len(train)*train_size)], y_train[int(len(train)*train_size):]
+    # Se hace partición del dataset con sklearn
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, train_size=train_size, random_state=42)
 
-    training_set = TensorDataset(x_train, y_train)
-    validation_set = TensorDataset(x_val, y_val)
-    test_set = TensorDataset(x_test, y_test)
+    training_set = (x_train, y_train)
+    validation_set = (x_val, y_val)
+    test_set = (x_test, y_test)
     datasets = [training_set, validation_set, test_set]
     return datasets
 
 def load_and_log():
     # 🚀 start a run, with a type to label it and a project it can call home
     with wandb.init(
-        project="MLOps-Pycon2023",
+        project="Proyecto",
         name=f"Load Raw Data ExecId-{args.IdExecution}", job_type="load-data") as run:
         
-        datasets = load()  # separate code for loading the datasets
+        datasets = load()  # Separate code for loading the datasets
         names = ["training", "validation", "test"]
 
         # 🏺 create our Artifact
         raw_data = wandb.Artifact(
             "mnist-raw", type="dataset",
             description="raw MNIST dataset, split into train/val/test",
-            metadata={"source": "torchvision.datasets.MNIST",
-                      "sizes": [len(dataset) for dataset in datasets]})
+            metadata={"source": "keras.datasets.mnist", #Se utiliza keras.datasets.mnist
+                      "sizes": [len(dataset[0]) for dataset in datasets]})
 
         for name, data in zip(names, datasets):
             # 🐣 Store a new file in the artifact, and write something into its contents.
-            with raw_data.new_file(name + ".pt", mode="wb") as file:
-                x, y = data.tensors
-                torch.save((x, y), file)
+            with raw_data.new_file(name + ".npz", mode="wb") as file: # Se guardan los datos en formato comprimido de numpy
+                x, y = data
+                np.savez_compressed(file, x=x, y=y)
 
         # ✍️ Save the artifact to W&B.
         run.log_artifact(raw_data)
