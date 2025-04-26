@@ -1,5 +1,5 @@
 
-# Import the model class from the main file 
+# Import 
 from src.Classifier import Classifier
 
 import os
