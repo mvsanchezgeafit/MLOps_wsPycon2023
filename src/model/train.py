@@ -1,5 +1,5 @@
 
-# Hola
+# Import the model class from the main file 
 from src.Classifier import Classifier
 
 import os
@@ -203,7 +203,7 @@ def train_and_log(config,experiment_id='99'):
         model_dir = model_artifact.download()
         model_path = os.path.join(model_dir, "initialized_model_linear.h5")
         
-        model = tf.keras.models.load_model(model_path)
+        model = tf.keras.models.load_model(model_path, custom_objects={"Classifier": Classifier})
         
         # Compilamos el modelo
         model.compile(optimizer=config.optimizer,
@@ -249,7 +249,7 @@ def evaluate_and_log(experiment_id='99', config=None):
         model_dir = model_artifact.download()
         model_path = os.path.join(model_dir, "trained_model.h5")  # Usamos .h5 en TensorFlow
 
-        model = tf.keras.models.load_model(model_path)
+        model = tf.keras.models.load_model(model_path, custom_objects={"Classifier": Classifier})
 
         # Evaluar el modelo en el conjunto de prueba
         loss, accuracy = model.evaluate(test_dataset)
