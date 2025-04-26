@@ -201,7 +201,7 @@ def train_and_log(config,experiment_id='99'):
         # Cargamos el modelo
         model_artifact = run.use_artifact("linear:latest")
         model_dir = model_artifact.download()
-        model_path = os.path.join(model_dir, "initialized_model_linear.h5")
+        model_path = os.path.join(model_dir, "initialized_model_linear.keras")
         
         model = tf.keras.models.load_model(model_path, custom_objects={"Classifier": Classifier})
         
@@ -219,10 +219,10 @@ def train_and_log(config,experiment_id='99'):
             description="Trained NN model",
             metadata=dict(config))
 
-        # Guardamos el modelo en formato .h5
-        model.save("trained_model.h5")
-        model_artifact.add_file("trained_model.h5")
-        wandb.save("trained_model.h5")
+        # Guardamos el modelo en formato .keras
+        model.save("trained_model.keras")
+        model_artifact.add_file("trained_model.keras")
+        wandb.save("trained_model.keras")
 
         run.log_artifact(model_artifact)
 
@@ -247,7 +247,7 @@ def evaluate_and_log(experiment_id='99', config=None):
         # Cargar el modelo entrenado
         model_artifact = run.use_artifact("trained-model:latest")
         model_dir = model_artifact.download()
-        model_path = os.path.join(model_dir, "trained_model.h5")  # Usamos .h5 en TensorFlow
+        model_path = os.path.join(model_dir, "trained_model.keras")  
 
         model = tf.keras.models.load_model(model_path, custom_objects={"Classifier": Classifier})
 
