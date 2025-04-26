@@ -145,12 +145,9 @@ def get_hardest_k_examples(model, testing_set, k=32):
     losses = []
     predictions = []
 
-    # Deshabilitamos el entrenamiento
-    model.eval()
-
-    # Calculamos las pérdidas y predicciones para cada ejemplo
+    # Deshabilitamos el entrenamiento, ya que no necesitamos gradientes en la evaluación
     for x_batch, y_batch in dataset:
-        logits = model(x_batch, training=False)  # Predicción
+        logits = model(x_batch, training=False)  # Predicción en modo inferencia
         loss_value = loss_fn(y_batch, logits)   # Pérdida
 
         # Calculamos la predicción más probable
@@ -173,7 +170,6 @@ def get_hardest_k_examples(model, testing_set, k=32):
     predicted_labels = predictions[argsort_loss[-k:]]
 
     return highest_k_losses, hardest_k_examples, true_labels, predicted_labels
-
 
 
 
