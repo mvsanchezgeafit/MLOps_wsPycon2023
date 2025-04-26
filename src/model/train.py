@@ -191,8 +191,8 @@ def train_and_log(config,experiment_id='99'):
         data_dir = data.download()
 
         # Cargamos los datasets usando TensorFlow Dataset API
-        training_dataset = read(data_dir, "training")
-        validation_dataset = read(data_dir, "validation")
+        x_train, y_train = read(data_dir, "training")
+        x_valid, y_valid = read(data_dir, "validation")
 
         x_train = x_train.reshape((-1, 784))
         x_valid = x_valid.reshape((-1, 784))
@@ -242,12 +242,9 @@ def evaluate_and_log(experiment_id='99', config=None):
         # Descargar y cargar los datos procesados
         data = run.use_artifact('mnist-preprocess:latest')
         data_dir = data.download()
-        testing_set = read(data_dir, "test")  # Función para leer los datos
-
-
+        x_test, y_test = read(data_dir, "test")
         x_test = x_test.reshape((-1, 784))
-        # Convertimos el conjunto de datos de prueba a tf.data.Dataset
-        test_dataset = tf.data.Dataset.from_tensor_slices(testing_set).batch(128)
+        test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(128)
 
 
         
