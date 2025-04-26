@@ -2,6 +2,7 @@
 
 # Import the model class from the main file
 from src.Classifier import Classifier
+import tensorflow as tf
 
 import os
 import argparse
@@ -28,7 +29,7 @@ num_classes = 10
 input_shape = 784
 
 def build_model_and_log(config, model, model_name="MLP", model_description="Simple MLP"):
-    with wandb.init(project="Proyecto", 
+    with wandb.init(project="MLOps-Pycon2023", 
         name=f"initialize Model ExecId-{args.IdExecution}", 
         job_type="initialize-model", config=config) as run:
         config = wandb.config
@@ -61,3 +62,6 @@ model_config = {"input_shape":input_shape,
 model = Classifier(**model_config)
 
 build_model_and_log(model_config, model, "linear","Simple Linear Classifier")
+
+
+model = tf.keras.models.load_model("./model/initialized_model_linear.h5", custom_objects={'Classifier': Classifier})
