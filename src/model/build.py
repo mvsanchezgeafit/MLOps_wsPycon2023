@@ -1,4 +1,4 @@
-import torch
+
 
 # Import the model class from the main file
 from src.Classifier import Classifier
@@ -38,13 +38,15 @@ def build_model_and_log(config, model, model_name="MLP", model_description="Simp
             description=model_description,
             metadata=dict(config))
 
-        name_artifact_model = f"initialized_model_{model_name}.pth"
+        name_artifact_model = f"initialized_model_{model_name}.h5"
 
-        torch.save(model.state_dict(), f"./model/{name_artifact_model}")
+        model.save(f"./model/{name_artifact_model}")
+
+        
         # ➕ another way to add a file to an Artifact
         model_artifact.add_file(f"./model/{name_artifact_model}")
 
-        wandb.save(name_artifact_model)
+        wandb.save(f"./model/{name_artifact_model}")
 
         run.log_artifact(model_artifact)
 
