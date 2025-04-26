@@ -25,43 +25,42 @@ if not os.path.exists("./model"):
     os.makedirs("./model")
 
 # Data parameters testing
-num_classes = 10
+# Parámetros del modelo
 input_shape = 784
+num_classes = 10
 
-def build_model_and_log(config, model, model_name="MLP", model_description="Simple MLP"):
-    with wandb.init(project="MLOps-Pycon2023", 
-        name=f"initialize Model ExecId-{args.IdExecution}", 
-        job_type="initialize-model", config=config) as run:
-        config = wandb.config
-
-        model_artifact = wandb.Artifact(
-            model_name, type="model",
-            description=model_description,
-            metadata=dict(config))
-
-        name_artifact_model = f"initialized_model_{model_name}.h5"
-
-        model.save(f"./model/{name_artifact_model}")
-
-        
-        # ➕ another way to add a file to an Artifact
-        model_artifact.add_file(f"./model/{name_artifact_model}")
-
-        wandb.save(f"./model/{name_artifact_model}")
-
-        run.log_artifact(model_artifact)
-
-
-# MLP
-# Testing config
-model_config = {"input_shape":input_shape,
-                "hidden_layer_1": 32,
-                "hidden_layer_2": 64,
-                "num_classes":num_classes}
+model_config = {
+    "input_shape": input_shape,
+    "hidden_layer_1": 32,
+    "hidden_layer_2": 64,
+    "num_classes": num_classes
+}
 
 model = Classifier(**model_config)
+model.build(input_shape=(None, input_shape))  # Necesario para poder guardar en formato .h5
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-build_model_and_log(model_config, model, "linear","Simple Linear Classifier")
+def build_model_and_log(config, model, model_name="MLP", model_description="Simple MLP"):
+    with wandb.init(project="Proyecto",
+                    name=f"initialize Model ExecId-{args.IdExecution}",
+                    job_type="initialize-model",
+                    config=config) as run:
 
+        # Crear un artifact de tipo "model"
+        model_artifact = wandb.Artifact(
+            model_name,
+            type="model",
+            description=model_description,
+            metadata=dict(config)
+        )
 
-model = tf.keras.models.load_model("./model/initialized_model_linear.h5", custom_objects={'Classifier': Classifier})
+        filename = f"initialized_model_{model_name}.h5"
+        model_path = os.path.join("model", filename)
+        model.save(model_path)
+        
+        model_artifact.add_file(model_path)
+        wandb.save(model_path)
+        run.log_artifact(model_artifact)
+
+# Ejecutar función
+build_model_and_log(model_config, model, model_name="linear", model_description="Simple Linear Classifier")
