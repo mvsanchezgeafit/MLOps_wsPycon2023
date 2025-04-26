@@ -8,4 +8,4 @@ tensorboard==2.18.0
 tensorboard-data-server==0.7.2
 tensorflow==2.18.0
 scikit-learn==1.5.2
-pickle5==0.0.12
+pickle5==0.0.11
