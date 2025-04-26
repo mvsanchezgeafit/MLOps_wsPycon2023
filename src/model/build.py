@@ -37,7 +37,7 @@ model_config = {
 }
 
 model = Classifier(**model_config)
-model.build(input_shape=(None, input_shape))  # Necesario para poder guardar en formato .h5
+model.build(input_shape=(None, input_shape)) 
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
 def build_model_and_log(config, model, model_name="MLP", model_description="Simple MLP"):
@@ -54,7 +54,7 @@ def build_model_and_log(config, model, model_name="MLP", model_description="Simp
             metadata=dict(config)
         )
 
-        filename = f"initialized_model_{model_name}.keras"
+        filename = f"initialized_model_{model_name}.h5"
         model_path = os.path.join("model", filename)
         model.save(model_path)
         
