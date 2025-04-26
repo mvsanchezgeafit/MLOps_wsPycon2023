@@ -43,7 +43,7 @@ def load_and_log():
 
         # 🏺 create our Artifact
         raw_data = wandb.Artifact(
-            "mnist-raw:latest", type="dataset",
+            'mnist_raw', type='dataset',
             description="raw MNIST dataset, split into train/val/test",
             metadata={"source": "keras.datasets.mnist", #Se utiliza keras.datasets.mnist
                       "sizes": [len(dataset[0]) for dataset in datasets]})
