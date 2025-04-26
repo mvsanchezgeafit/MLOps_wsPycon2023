@@ -28,7 +28,7 @@ def preprocess(x, y, normalize=True, expand_dims=True):
 
 def preprocess_and_log(steps):
 
-    with wandb.init(project="MLOps-Pycon2025",name=f"Preprocess Data ExecId-{args.IdExecution}", job_type="preprocess-data") as run:    
+    with wandb.init(project="Proyecto",name=f"Preprocess Data ExecId-{args.IdExecution}", job_type="preprocess-data") as run:    
         processed_data = wandb.Artifact(
             "mnist-preprocess", type="dataset",
             description="Preprocessed MNIST dataset",
