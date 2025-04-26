@@ -1,11 +1,10 @@
-import torch
-import torchvision
-from torch.utils.data import TensorDataset
 
 #testing
 import os
 import argparse
 import wandb
+import numpy as np 
+import pickle
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--IdExecution', type=str, help='ID of the execution')
@@ -16,25 +15,20 @@ if args.IdExecution:
 else:
     args.IdExecution = "testing console"
 
-def preprocess(dataset, normalize=True, expand_dims=True):
-    """
-    ## Prepare the data
-    """
-    x, y = dataset.tensors
+def preprocess(x, y, normalize=True, expand_dims=True):
+    x = x.astype('float32')
 
     if normalize:
-        # Scale images to the [0, 1] range
-        x = x.type(torch.float32) / 255
+        x = x / 255.0
 
-    if expand_dims:
-        # Make sure images have shape (1, 28, 28)
-        x = torch.unsqueeze(x, 1)
-    
-    return TensorDataset(x, y)
+    if expand_dims and len(x.shape) == 3:
+        x = np.expand_dims(x, axis=-1)
+
+    return x, y
 
 def preprocess_and_log(steps):
 
-    with wandb.init(project="MLOps-Pycon2023",name=f"Preprocess Data ExecId-{args.IdExecution}", job_type="preprocess-data") as run:    
+    with wandb.init(project="MLOps-Pycon2025",name=f"Preprocess Data ExecId-{args.IdExecution}", job_type="preprocess-data") as run:    
         processed_data = wandb.Artifact(
             "mnist-preprocess", type="dataset",
             description="Preprocessed MNIST dataset",
@@ -48,19 +42,33 @@ def preprocess_and_log(steps):
         
         for split in ["training", "validation", "test"]:
             raw_split = read(raw_dataset, split)
-            processed_dataset = preprocess(raw_split, **steps)
+            x, y = preprocess(raw_split, **steps)
 
-            with processed_data.new_file(split + ".pt", mode="wb") as file:
-                x, y = processed_dataset.tensors
-                torch.save((x, y), file)
+            # Guardamos en formato .npz (compresión NumPy)
+            filename = split + ".npz"
+            filepath = os.path.join("./", filename)
+            np.savez_compressed(filepath, x=x, y=y)
+
+            # Lo añadimos al artifact de salida
+            processed_data.add_file(filepath, name=filename)
 
         run.log_artifact(processed_data)
 
-def read(data_dir, split):
-    filename = split + ".pt"
-    x, y = torch.load(os.path.join(data_dir, filename))
+ 
 
-    return TensorDataset(x, y)
+
+def read(data_dir, split):
+    """
+    Lee archivos .py que contienen arrays NumPy (x, y), guardados con pickle.
+    """
+    filename = split + ".py"
+    filepath = os.path.join(data_dir, filename)
+
+    with open(filepath, "rb") as f:
+        x, y = pickle.load(f)  # o puedes usar np.load si están en .npy
+
+    return x, y
+
 
 steps = {"normalize": True,
          "expand_dims": False}
