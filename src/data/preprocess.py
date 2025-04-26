@@ -1,5 +1,5 @@
 
-#testing
+
 import os
 import argparse
 import wandb
@@ -35,7 +35,7 @@ def preprocess_and_log(steps):
             metadata=steps)
          
         # ✔️ declare which artifact we'll be using
-        raw_data_artifact = run.use_artifact('mnist-preprocess')
+        raw_data_artifact = run.use_artifact("mnist-raw:latest")
 
         # 📥 if need be, download the artifact
         raw_dataset = raw_data_artifact.download(root="./data/artifacts/")
