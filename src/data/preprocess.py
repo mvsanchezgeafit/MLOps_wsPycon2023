@@ -58,14 +58,12 @@ def preprocess_and_log(steps):
 
 
 def read(data_dir, split):
-    """
-    Lee archivos .py que contienen arrays NumPy (x, y), guardados con pickle.
-    """
-    filename = split + ".py"
+    filename = split + ".npz"
     filepath = os.path.join(data_dir, filename)
 
-    with open(filepath, "rb") as f:
-        x, y = pickle.load(f)  # o puedes usar np.load si están en .npy
+    with np.load(filepath) as data:
+        x = data["x"]
+        y = data["y"]
 
     return x, y
 
